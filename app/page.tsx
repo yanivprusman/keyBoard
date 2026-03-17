@@ -126,7 +126,7 @@ export default function Home() {
 
   return (
     <div data-id="page-root" className="min-h-screen bg-zinc-950 text-zinc-100 px-10 py-8">
-      <h1 className="text-3xl font-bold mb-8 tracking-tight">keyBoard</h1>
+      <h1 data-id="page-title" className="text-3xl font-bold mb-8 tracking-tight">keyBoard</h1>
 
       {error && (
         <div data-id="error-banner" className="mb-6 p-4 bg-amber-950/50 border border-amber-800/60 rounded-lg text-amber-300 text-sm">
@@ -137,7 +137,7 @@ export default function Home() {
       {/* Involved Devices */}
       <div data-id="devices-section" className="bg-zinc-900/80 rounded-xl border border-zinc-800/80 p-6 shadow-lg">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold tracking-tight">Devices</h2>
+          <h2 data-id="devices-title" className="text-xl font-semibold tracking-tight">Devices</h2>
           <button
             data-id="add-device-button"
             onClick={() => setShowDevicePicker(!showDevicePicker)}
@@ -150,7 +150,7 @@ export default function Home() {
         {/* Device Picker */}
         {showDevicePicker && (
           <div data-id="device-picker" className="mb-5 p-4 bg-zinc-800/60 rounded-lg border border-zinc-700/60">
-            <h3 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wide">Available Input Devices</h3>
+            <h3 data-id="picker-title" className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wide">Available Input Devices</h3>
             <div className="space-y-2">
               {availableDevices.map(dev => (
                 <div
@@ -160,19 +160,19 @@ export default function Home() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{dev.name || 'Unknown'}</span>
+                      <span data-id={`picker-name-${dev.path}`} className="font-medium truncate">{dev.name || 'Unknown'}</span>
                       {dev.isKeyboard && (
-                        <span className="px-2 py-0.5 text-xs bg-zinc-700/80 text-zinc-300 rounded-md font-mono">
+                        <span data-id={`picker-badge-kbd-${dev.path}`} className="px-2 py-0.5 text-xs bg-zinc-700/80 text-zinc-300 rounded-md font-mono">
                           kbd
                         </span>
                       )}
                       {dev.isMouse && (
-                        <span className="px-2 py-0.5 text-xs bg-zinc-700/80 text-zinc-300 rounded-md font-mono">
+                        <span data-id={`picker-badge-mouse-${dev.path}`} className="px-2 py-0.5 text-xs bg-zinc-700/80 text-zinc-300 rounded-md font-mono">
                           mouse
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-zinc-500 mt-1.5 font-mono">
+                    <div data-id={`picker-info-${dev.path}`} className="text-xs text-zinc-500 mt-1.5 font-mono">
                       {dev.path} &middot; {dev.vid}:{dev.pid}
                     </div>
                   </div>
@@ -202,8 +202,8 @@ export default function Home() {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5">
-                  <span className="font-medium truncate">{dev.name}</span>
-                  <span className={`px-2 py-0.5 text-xs rounded-md font-mono ${
+                  <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
+                  <span data-id={`device-type-${dev.path}`} className={`px-2 py-0.5 text-xs rounded-md font-mono ${
                     dev.type === 'corsair-k100'
                       ? 'bg-blue-900/50 text-blue-300 border border-blue-800/50'
                       : 'bg-zinc-700/80 text-zinc-300'
@@ -211,7 +211,7 @@ export default function Home() {
                     {dev.type}
                   </span>
                 </div>
-                <div className="text-xs text-zinc-500 mt-1.5 font-mono">
+                <div data-id={`device-info-${dev.path}`} className="text-xs text-zinc-500 mt-1.5 font-mono">
                   {dev.path} &middot; {dev.vid}:{dev.pid}
                 </div>
               </div>
