@@ -20,6 +20,10 @@
 # production
 /build
 
+# C++ server build
+/server/build/
+/server/keyboard-server
+
 # misc
 .DS_Store
 *.pem

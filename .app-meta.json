@@ -1,4 +1,5 @@
 {
-  "description": "keyBoard application",
-  "icon": "FlaskConical"
+  "description": "Input device grabber and remapper with Corsair K100 BRAGI G-key support",
+  "icon": "Keyboard",
+  "usePorts": true
 }

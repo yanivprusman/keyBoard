@@ -1,0 +1,67 @@
+#pragma once
+#include "UInputEmitter.h"
+#include <cstdint>
+#include <functional>
+
+class BragiK100 {
+public:
+    // BRAGI protocol constants
+    static constexpr uint8_t BRAGI_MAGIC = 0x08;
+    static constexpr uint8_t BRAGI_CMD_SET = 0x01;
+    static constexpr uint8_t BRAGI_CMD_GET = 0x02;
+    static constexpr uint8_t BRAGI_PROP_MODE = 0x03;
+    static constexpr uint8_t BRAGI_MODE_HW = 0x01;
+    static constexpr uint8_t BRAGI_MODE_SW = 0x02;
+    static constexpr uint8_t BRAGI_NKRO_MARKER = 0x02;
+
+    static constexpr int CORSAIR_VID = 0x1b1c;
+    static constexpr int CORSAIR_K100_PID = 0x1bc5;
+
+    static constexpr int NKRO_BYTES = 62;
+    static constexpr int NKRO_BITS = NKRO_BYTES * 8;
+    static constexpr int GKEY_BASE = 131;
+    static constexpr int GKEY_END = 137;
+
+    ~BragiK100();
+
+    // Initialize: open hidraw interfaces, switch to SW mode, grab evdev, create uinput
+    bool init();
+
+    // Shutdown: release grabs, restore HW mode, destroy uinput
+    void shutdown();
+
+    // Process a packet from the NKRO hidraw fd
+    // Returns true if any keys changed
+    bool processNkroPacket();
+
+    // Release all held keys (for clean shutdown)
+    void releaseAllKeys();
+
+    int ctrlFd() const { return m_ctrlFd; }
+    int nkroFd() const { return m_nkroFd; }
+    int evdevFd() const { return m_evdevFd; }
+    bool isInitialized() const { return m_initialized; }
+
+    UInputEmitter& emitter() { return m_emitter; }
+
+    // Custom G-key mapping (bragi index → linux keycode override)
+    void setGkeyMapping(int gkeyIndex, int linuxKeycode);
+
+    // BRAGI index to linux keycode map
+    static const int bragiToLinux[200];
+
+private:
+    bool bragiSend(int fd, const uint8_t* pkt, size_t len);
+    int bragiRecv(int fd, uint8_t* buf, int timeoutMs);
+    bool bragiSetMode(uint8_t mode);
+    int bragiGetMode();
+
+    int m_ctrlFd = -1;  // hidraw interface 1 (BRAGI control)
+    int m_nkroFd = -1;  // hidraw interface 2 (NKRO bitmap)
+    int m_evdevFd = -1;  // evdev device (grabbed to suppress phantom events)
+    bool m_initialized = false;
+
+    UInputEmitter m_emitter;
+    bool m_keyState[200] = {};
+    int m_gkeyOverrides[6] = {-1, -1, -1, -1, -1, -1}; // per-gkey overrides (-1 = use default)
+};
