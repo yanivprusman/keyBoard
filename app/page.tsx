@@ -25,9 +25,16 @@ interface Config {
   numpadCustomMode: Record<string, string>;
 }
 
+interface Status {
+  running: boolean;
+  grabbedDevices: Array<{ path: string; name: string; type: string }>;
+  bragiInitialized: boolean;
+}
+
 export default function Home() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
@@ -46,6 +53,7 @@ export default function Home() {
         setDevices(data.devices || []);
       }
       if (statusRes.ok) {
+        setStatus(await statusRes.json());
         setError(null);
       } else {
         setError('Cannot connect to keyboard server');
@@ -66,32 +74,53 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  const isGrabbed = (path: string) => {
-    return config?.devices.some(d => d.path === path && d.grab) || false;
+  const isInConfig = (path: string) => {
+    return config?.devices.some(d => d.path === path) || false;
+  };
+
+  const isActuallyGrabbed = (path: string) => {
+    return status?.grabbedDevices.some(d => d.path === path) || false;
   };
 
   const isCorsairK100 = (dev: Device) => {
     return dev.vid === '1b1c' && dev.pid === '1bc5' && dev.isKeyboard;
   };
 
+  const toggleGrab = async (dev: Config['devices'][number]) => {
+    const currentlyGrabbed = isActuallyGrabbed(dev.path);
+    try {
+      await fetch('/api/grab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: dev.path, grab: !currentlyGrabbed }),
+      });
+      fetchAll();
+    } catch { /* ignore */ }
+  };
+
   const addDevice = async (dev: Device) => {
     try {
+      const path = dev.path;
+      const type = isCorsairK100(dev) ? 'corsair-k100' : 'generic';
+      // Add to config
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...config,
           devices: [...(config?.devices || []), {
-            path: dev.path,
-            name: dev.name,
-            vid: dev.vid,
-            pid: dev.pid,
-            grab: true,
-            type: isCorsairK100(dev) ? 'corsair-k100' : 'generic',
+            path, name: dev.name, vid: dev.vid, pid: dev.pid,
+            grab: true, type,
           }],
         }),
       });
       if (res.ok) {
+        // Grab immediately
+        await fetch('/api/grab', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, grab: true }),
+        });
         setShowDevicePicker(false);
         fetchAll();
       }
@@ -100,6 +129,13 @@ export default function Home() {
 
   const removeDevice = async (path: string) => {
     try {
+      // Ungrab first
+      await fetch('/api/grab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, grab: false }),
+      });
+      // Remove from config
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -131,10 +167,10 @@ export default function Home() {
     } catch { /* ignore */ }
   };
 
-  const involvedDevices = config?.devices.filter(d => d.grab) || [];
+  const configuredDevices = config?.devices || [];
   const availableDevices = devices
     .filter(d => d.isKeyboard || d.isMouse)
-    .filter(d => !isGrabbed(d.path));
+    .filter(d => !isInConfig(d.path));
 
   if (loading) {
     return (
@@ -214,24 +250,40 @@ export default function Home() {
 
         {/* Current Devices List */}
         <div data-id="device-list" className="space-y-3">
-          {involvedDevices.map(dev => (
-            <div
-              key={dev.path}
-              data-id={`device-${dev.path}`}
-              onClick={() => setDetailDevice(dev)}
-              className="p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 flex items-center justify-between cursor-pointer hover:bg-zinc-800/80 transition-colors"
-            >
-              <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
-              <button
-                data-id={`device-remove-${dev.path}`}
-                onClick={(e) => { e.stopPropagation(); removeDevice(dev.path); }}
-                className="ml-4 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
+          {configuredDevices.map(dev => {
+            const grabbed = isActuallyGrabbed(dev.path);
+            return (
+              <div
+                key={dev.path}
+                data-id={`device-${dev.path}`}
+                onClick={() => setDetailDevice(dev)}
+                className="p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 flex items-center justify-between cursor-pointer hover:bg-zinc-800/80 transition-colors"
               >
-                Remove
-              </button>
-            </div>
-          ))}
-          {involvedDevices.length === 0 && (
+                <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
+                <div className="flex items-center gap-2 ml-4">
+                  <button
+                    data-id={`device-grab-${dev.path}`}
+                    onClick={(e) => { e.stopPropagation(); toggleGrab(dev); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      grabbed
+                        ? 'bg-emerald-600/80 hover:bg-emerald-500/80 text-emerald-50'
+                        : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-400'
+                    }`}
+                  >
+                    {grabbed ? 'Grabbed' : 'Ungrabbed'}
+                  </button>
+                  <button
+                    data-id={`device-remove-${dev.path}`}
+                    onClick={(e) => { e.stopPropagation(); removeDevice(dev.path); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {configuredDevices.length === 0 && (
             <div data-id="no-devices-configured" className="text-zinc-500 text-sm p-4">No devices configured</div>
           )}
         </div>

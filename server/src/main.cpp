@@ -65,6 +65,7 @@ static ConfigManager g_config;
 static DeviceManager g_devMgr;
 static ApiServer g_api;
 static BragiK100 g_bragi;
+static int g_epfd = -1;
 
 struct GenericDevice {
     int evdevFd = -1;
@@ -75,6 +76,38 @@ struct GenericDevice {
 };
 
 static std::vector<GenericDevice> g_genericDevices;
+
+// ── Helpers ─────────────────────────────────────────────────────
+
+static int keyNameToCode(const std::string& name) {
+    if (name == "KEY_F13") return KEY_F13;
+    if (name == "KEY_F14") return KEY_F14;
+    if (name == "KEY_F15") return KEY_F15;
+    if (name == "KEY_F16") return KEY_F16;
+    if (name == "KEY_F17") return KEY_F17;
+    if (name == "KEY_F18") return KEY_F18;
+    if (name == "KEY_F19") return KEY_F19;
+    if (name == "KEY_F20") return KEY_F20;
+    if (name == "KEY_F21") return KEY_F21;
+    if (name == "KEY_F22") return KEY_F22;
+    if (name == "KEY_F23") return KEY_F23;
+    if (name == "KEY_F24") return KEY_F24;
+    return -1;
+}
+
+static void applyGkeyMappings() {
+    auto& gmap = g_config.gkeyMap();
+    for (int g = 0; g < 6; g++) {
+        char gname[4];
+        snprintf(gname, sizeof(gname), "G%d", g + 1);
+        auto it = gmap.find(gname);
+        if (it != gmap.end()) {
+            int code = keyNameToCode(it->second);
+            if (code >= 0)
+                g_bragi.setGkeyMapping(g, code);
+        }
+    }
+}
 
 // ── API command handlers ────────────────────────────────────────
 
@@ -137,39 +170,131 @@ static json handleSetConfig(const json& req) {
 }
 
 static json handleGrab(const json& req) {
-    // This is a config-level toggle — actual grab changes require restart
     if (!req.contains("path")) {
         return {{"error", "Missing 'path' field"}};
     }
     std::string path = req["path"].get<std::string>();
     bool grab = req.value("grab", true);
 
+    // Find device in config
+    DeviceConfig* dcPtr = nullptr;
     for (auto& dc : g_config.devices()) {
-        if (dc.path == path) {
-            dc.grab = grab;
-            g_config.save();
-            return {{"ok", true}, {"note", "Restart server to apply grab changes"}};
-        }
+        if (dc.path == path) { dcPtr = &dc; break; }
     }
 
-    // Device not in config — add it
-    auto devices = g_devMgr.enumerate();
-    for (const auto& d : devices) {
-        if (d.path == path) {
+    // Device not in config — add it first if grabbing
+    if (!dcPtr && grab) {
+        if (path == "corsair-k100") {
             DeviceConfig dc;
-            dc.path = d.path;
-            dc.name = d.name;
-            dc.vid = d.vid;
-            dc.pid = d.pid;
-            dc.grab = grab;
-            dc.type = "generic";
+            dc.path = "corsair-k100";
+            dc.name = "Corsair K100 RGB";
+            dc.vid = "1b1c";
+            dc.pid = "1bc5";
+            dc.grab = false; // will be set below
+            dc.type = "corsair-k100";
             g_config.devices().push_back(dc);
-            g_config.save();
-            return {{"ok", true}, {"note", "Device added to config. Restart to apply."}};
+            dcPtr = &g_config.devices().back();
+        } else {
+            auto devices = g_devMgr.enumerate();
+            for (const auto& d : devices) {
+                if (d.path == path) {
+                    DeviceConfig dc;
+                    dc.path = d.path;
+                    dc.name = d.name;
+                    dc.vid = d.vid;
+                    dc.pid = d.pid;
+                    dc.grab = false; // will be set below
+                    dc.type = "generic";
+                    g_config.devices().push_back(dc);
+                    dcPtr = &g_config.devices().back();
+                    break;
+                }
+            }
         }
+        if (!dcPtr) return {{"error", "Device not found: " + path}};
+    } else if (!dcPtr && !grab) {
+        return {{"ok", true}, {"note", "Device not in config, nothing to ungrab"}};
     }
 
-    return {{"error", "Device not found: " + path}};
+    struct epoll_event ev = {};
+    ev.events = EPOLLIN;
+
+    if (dcPtr->type == "corsair-k100") {
+        if (grab) {
+            if (g_bragi.isInitialized()) {
+                return {{"ok", true}, {"note", "Already grabbed"}};
+            }
+            if (!g_bragi.init()) {
+                return {{"error", "Failed to init Corsair K100 BRAGI"}};
+            }
+            applyGkeyMappings();
+            ev.data.fd = g_bragi.nkroFd();
+            epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);
+            dcPtr->grab = true;
+            g_config.save();
+            fprintf(stderr, "[grab] Corsair K100 grabbed\n");
+            return {{"ok", true}};
+        } else {
+            if (!g_bragi.isInitialized()) {
+                dcPtr->grab = false;
+                g_config.save();
+                return {{"ok", true}, {"note", "Already ungrabbed"}};
+            }
+            // Remove from epoll BEFORE shutdown (shutdown closes the fd)
+            epoll_ctl(g_epfd, EPOLL_CTL_DEL, g_bragi.nkroFd(), nullptr);
+            g_bragi.shutdown();
+            dcPtr->grab = false;
+            g_config.save();
+            fprintf(stderr, "[grab] Corsair K100 ungrabbed\n");
+            return {{"ok", true}};
+        }
+    } else {
+        // Generic device
+        if (grab) {
+            // Check not already grabbed
+            for (const auto& gd : g_genericDevices) {
+                if (gd.path == path) {
+                    return {{"ok", true}, {"note", "Already grabbed"}};
+                }
+            }
+            GenericDevice gd;
+            gd.path = dcPtr->path;
+            gd.name = dcPtr->name;
+            gd.evdevFd = g_devMgr.grabDevice(dcPtr->path);
+            if (gd.evdevFd < 0) {
+                return {{"error", "Cannot grab device: " + path}};
+            }
+            std::string uinputName = "keyboard-remap: " + dcPtr->name;
+            if (!gd.emitter.create(uinputName, 0, 0)) {
+                g_devMgr.ungrabDevice(gd.evdevFd);
+                return {{"error", "Cannot create uinput for: " + path}};
+            }
+            ev.data.fd = gd.evdevFd;
+            epoll_ctl(g_epfd, EPOLL_CTL_ADD, gd.evdevFd, &ev);
+            g_genericDevices.push_back(std::move(gd));
+            dcPtr->grab = true;
+            g_config.save();
+            fprintf(stderr, "[grab] Generic device grabbed: %s\n", path.c_str());
+            return {{"ok", true}};
+        } else {
+            // Find and ungrab
+            for (auto it = g_genericDevices.begin(); it != g_genericDevices.end(); ++it) {
+                if (it->path == path) {
+                    epoll_ctl(g_epfd, EPOLL_CTL_DEL, it->evdevFd, nullptr);
+                    it->emitter.destroy();
+                    g_devMgr.ungrabDevice(it->evdevFd);
+                    g_genericDevices.erase(it);
+                    dcPtr->grab = false;
+                    g_config.save();
+                    fprintf(stderr, "[grab] Generic device ungrabbed: %s\n", path.c_str());
+                    return {{"ok", true}};
+                }
+            }
+            dcPtr->grab = false;
+            g_config.save();
+            return {{"ok", true}, {"note", "Already ungrabbed"}};
+        }
+    }
 }
 
 // ── Usage ───────────────────────────────────────────────────────
@@ -223,8 +348,8 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, sighandler);
 
     // Create epoll instance
-    int epfd = epoll_create1(0);
-    if (epfd < 0) {
+    g_epfd = epoll_create1(0);
+    if (g_epfd < 0) {
         fprintf(stderr, "[main] epoll_create1 failed: %s\n", strerror(errno));
         return 1;
     }
@@ -233,7 +358,7 @@ int main(int argc, char* argv[]) {
     struct epoll_event ev = {};
     ev.events = EPOLLIN;
     ev.data.fd = g_api.listenerFd();
-    epoll_ctl(epfd, EPOLL_CTL_ADD, g_api.listenerFd(), &ev);
+    epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_api.listenerFd(), &ev);
 
     // Initialize configured devices
     for (const auto& dc : g_config.devices()) {
@@ -242,40 +367,10 @@ int main(int argc, char* argv[]) {
         if (dc.type == "corsair-k100") {
             // Initialize BRAGI K100
             if (g_bragi.init()) {
-                // Apply G-key mappings from config
-                auto& gmap = g_config.gkeyMap();
-                // Map config key names to linux keycodes
-                auto keyNameToCode = [](const std::string& name) -> int {
-                    if (name == "KEY_F13") return KEY_F13;
-                    if (name == "KEY_F14") return KEY_F14;
-                    if (name == "KEY_F15") return KEY_F15;
-                    if (name == "KEY_F16") return KEY_F16;
-                    if (name == "KEY_F17") return KEY_F17;
-                    if (name == "KEY_F18") return KEY_F18;
-                    if (name == "KEY_F19") return KEY_F19;
-                    if (name == "KEY_F20") return KEY_F20;
-                    if (name == "KEY_F21") return KEY_F21;
-                    if (name == "KEY_F22") return KEY_F22;
-                    if (name == "KEY_F23") return KEY_F23;
-                    if (name == "KEY_F24") return KEY_F24;
-                    return -1;
-                };
-
-                for (int g = 0; g < 6; g++) {
-                    char gname[4];
-                    snprintf(gname, sizeof(gname), "G%d", g + 1);
-                    auto it = gmap.find(gname);
-                    if (it != gmap.end()) {
-                        int code = keyNameToCode(it->second);
-                        if (code >= 0)
-                            g_bragi.setGkeyMapping(g, code);
-                    }
-                }
-
-                // Add NKRO fd to epoll
+                applyGkeyMappings();
                 ev.events = EPOLLIN;
                 ev.data.fd = g_bragi.nkroFd();
-                epoll_ctl(epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);
+                epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);
             } else {
                 fprintf(stderr, "[main] Failed to init Corsair K100 BRAGI\n");
             }
@@ -299,7 +394,7 @@ int main(int argc, char* argv[]) {
 
             ev.events = EPOLLIN;
             ev.data.fd = gd.evdevFd;
-            epoll_ctl(epfd, EPOLL_CTL_ADD, gd.evdevFd, &ev);
+            epoll_ctl(g_epfd, EPOLL_CTL_ADD, gd.evdevFd, &ev);
 
             g_genericDevices.push_back(std::move(gd));
         }
@@ -314,7 +409,7 @@ int main(int argc, char* argv[]) {
     struct epoll_event events[MAX_EVENTS];
 
     while (g_running) {
-        int nfds = epoll_wait(epfd, events, MAX_EVENTS, 100);
+        int nfds = epoll_wait(g_epfd, events, MAX_EVENTS, 100);
         if (nfds < 0) {
             if (errno == EINTR) continue;
             break;
@@ -329,7 +424,7 @@ int main(int argc, char* argv[]) {
                 if (clientFd >= 0) {
                     ev.events = EPOLLIN;
                     ev.data.fd = clientFd;
-                    epoll_ctl(epfd, EPOLL_CTL_ADD, clientFd, &ev);
+                    epoll_ctl(g_epfd, EPOLL_CTL_ADD, clientFd, &ev);
                 }
                 continue;
             }
@@ -380,7 +475,7 @@ int main(int argc, char* argv[]) {
                 if (fd == clientFd) {
                     isClient = true;
                     if (g_api.processClient(fd)) {
-                        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
+                        epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
                     }
                     break;
                 }
@@ -406,7 +501,7 @@ int main(int argc, char* argv[]) {
     // Shutdown API
     g_api.shutdown();
 
-    close(epfd);
+    close(g_epfd);
     fprintf(stderr, "[main] Done.\n");
     return 0;
 }
