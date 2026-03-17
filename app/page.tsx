@@ -203,7 +203,11 @@ export default function Home() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5">
                   <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
-                  <span data-id={`device-type-${dev.path}`} className={`px-2 py-0.5 text-xs rounded-md font-mono ${
+                  <span data-id={`device-type-${dev.path}`} title={
+                    dev.type === 'corsair-k100'
+                      ? 'BRAGI protocol — enables G-key detection (G1-G6) via software mode. Standard Linux HID cannot detect G-keys.'
+                      : 'Standard evdev grab with key passthrough and numpad remapping.'
+                  } className={`px-2 py-0.5 text-xs rounded-md font-mono cursor-help ${
                     dev.type === 'corsair-k100'
                       ? 'bg-blue-900/50 text-blue-300 border border-blue-800/50'
                       : 'bg-zinc-700/80 text-zinc-300'
