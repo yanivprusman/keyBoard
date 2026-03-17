@@ -118,27 +118,28 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
+      <div data-id="loading" className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
         <div className="text-zinc-500 text-lg">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 px-10 py-8">
+    <div data-id="page-root" className="min-h-screen bg-zinc-950 text-zinc-100 px-10 py-8">
       <h1 className="text-3xl font-bold mb-8 tracking-tight">keyBoard</h1>
 
       {error && (
-        <div className="mb-6 p-4 bg-amber-950/50 border border-amber-800/60 rounded-lg text-amber-300 text-sm">
+        <div data-id="error-banner" className="mb-6 p-4 bg-amber-950/50 border border-amber-800/60 rounded-lg text-amber-300 text-sm">
           {error}
         </div>
       )}
 
       {/* Involved Devices */}
-      <div className="bg-zinc-900/80 rounded-xl border border-zinc-800/80 p-6 shadow-lg">
+      <div data-id="devices-section" className="bg-zinc-900/80 rounded-xl border border-zinc-800/80 p-6 shadow-lg">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-semibold tracking-tight">Devices</h2>
           <button
+            data-id="add-device-button"
             onClick={() => setShowDevicePicker(!showDevicePicker)}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-sm"
           >
@@ -148,12 +149,13 @@ export default function Home() {
 
         {/* Device Picker */}
         {showDevicePicker && (
-          <div className="mb-5 p-4 bg-zinc-800/60 rounded-lg border border-zinc-700/60">
+          <div data-id="device-picker" className="mb-5 p-4 bg-zinc-800/60 rounded-lg border border-zinc-700/60">
             <h3 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wide">Available Input Devices</h3>
             <div className="space-y-2">
               {availableDevices.map(dev => (
                 <div
                   key={dev.path}
+                  data-id={`picker-device-${dev.path}`}
                   className="p-3.5 rounded-lg border border-zinc-700/50 bg-zinc-800/40 hover:bg-zinc-800/80 flex items-center justify-between transition-colors"
                 >
                   <div className="flex-1 min-w-0">
@@ -175,6 +177,7 @@ export default function Home() {
                     </div>
                   </div>
                   <button
+                    data-id={`picker-add-${dev.path}`}
                     onClick={() => addDevice(dev)}
                     className="ml-4 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
                   >
@@ -183,17 +186,18 @@ export default function Home() {
                 </div>
               ))}
               {availableDevices.length === 0 && (
-                <div className="text-zinc-500 text-sm p-3">No available devices to add</div>
+                <div data-id="no-available-devices" className="text-zinc-500 text-sm p-3">No available devices to add</div>
               )}
             </div>
           </div>
         )}
 
         {/* Current Devices List */}
-        <div className="space-y-3">
+        <div data-id="device-list" className="space-y-3">
           {involvedDevices.map(dev => (
             <div
               key={dev.path}
+              data-id={`device-${dev.path}`}
               className="p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 border-l-[3px] border-l-blue-500 flex items-center justify-between"
             >
               <div className="flex-1 min-w-0">
@@ -212,6 +216,7 @@ export default function Home() {
                 </div>
               </div>
               <button
+                data-id={`device-remove-${dev.path}`}
                 onClick={() => removeDevice(dev.path)}
                 className="ml-4 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
               >
@@ -220,7 +225,7 @@ export default function Home() {
             </div>
           ))}
           {involvedDevices.length === 0 && (
-            <div className="text-zinc-500 text-sm p-4">No devices configured</div>
+            <div data-id="no-devices-configured" className="text-zinc-500 text-sm p-4">No devices configured</div>
           )}
         </div>
       </div>
