@@ -31,6 +31,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
+  const [detailDevice, setDetailDevice] = useState<Config['devices'][number] | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -108,6 +109,25 @@ export default function Home() {
         }),
       });
       if (res.ok) fetchAll();
+    } catch { /* ignore */ }
+  };
+
+  const toggleDeviceType = async (dev: Config['devices'][number]) => {
+    const newType = dev.type === 'corsair-k100' ? 'generic' : 'corsair-k100';
+    const updated = {
+      ...config,
+      devices: config!.devices.map(d => d.path === dev.path ? { ...d, type: newType } : d),
+    };
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        setDetailDevice({ ...dev, type: newType });
+        fetchAll();
+      }
     } catch { /* ignore */ }
   };
 
@@ -198,24 +218,13 @@ export default function Home() {
             <div
               key={dev.path}
               data-id={`device-${dev.path}`}
-              className="group p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 flex items-center justify-between"
+              onClick={() => setDetailDevice(dev)}
+              className="p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 flex items-center justify-between cursor-pointer hover:bg-zinc-800/80 transition-colors"
             >
-              <div className="flex-1 min-w-0">
-                <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
-                <div className="hidden group-hover:block mt-1.5 text-xs text-zinc-500 font-mono">
-                  <span data-id={`device-type-${dev.path}`} title={
-                    dev.type === 'corsair-k100'
-                      ? 'BRAGI protocol — enables G-key detection (G1-G6) via software mode. Standard Linux HID cannot detect G-keys.'
-                      : 'Standard evdev grab with key passthrough and numpad remapping.'
-                  } className="cursor-help">
-                    {dev.type === 'corsair-k100' ? 'bragi' : dev.type}
-                  </span>
-                  <span data-id={`device-info-${dev.path}`}> · {dev.path} · {dev.vid}:{dev.pid}</span>
-                </div>
-              </div>
+              <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
               <button
                 data-id={`device-remove-${dev.path}`}
-                onClick={() => removeDevice(dev.path)}
+                onClick={(e) => { e.stopPropagation(); removeDevice(dev.path); }}
                 className="ml-4 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
               >
                 Remove
@@ -227,6 +236,40 @@ export default function Home() {
           )}
         </div>
       </div>
+      {/* Device Detail Dialog */}
+      {detailDevice && (
+        <div data-id="device-detail-overlay" className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setDetailDevice(null)}>
+          <div data-id="device-detail-dialog" className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 data-id="detail-name" className="text-lg font-semibold mb-4">{detailDevice.name}</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Path</span>
+                <span data-id="detail-path" className="font-mono text-zinc-200">{detailDevice.path}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">VID:PID</span>
+                <span data-id="detail-vidpid" className="font-mono text-zinc-200">{detailDevice.vid}:{detailDevice.pid}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-zinc-400">BRAGI protocol</span>
+                  <p className="text-xs text-zinc-500 mt-0.5">G-key detection (G1-G6) via software mode</p>
+                </div>
+                <button
+                  data-id="detail-bragi-toggle"
+                  onClick={() => toggleDeviceType(detailDevice)}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${detailDevice.type === 'corsair-k100' ? 'bg-blue-600' : 'bg-zinc-600'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${detailDevice.type === 'corsair-k100' ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+            </div>
+            <button data-id="detail-close" onClick={() => setDetailDevice(null)} className="mt-5 w-full py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm font-medium text-zinc-200 transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
