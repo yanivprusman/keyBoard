@@ -207,12 +207,8 @@ export default function Home() {
                     dev.type === 'corsair-k100'
                       ? 'BRAGI protocol — enables G-key detection (G1-G6) via software mode. Standard Linux HID cannot detect G-keys.'
                       : 'Standard evdev grab with key passthrough and numpad remapping.'
-                  } className={`px-2 py-0.5 text-xs rounded-md font-mono cursor-help ${
-                    dev.type === 'corsair-k100'
-                      ? 'bg-blue-900/50 text-blue-300 border border-blue-800/50'
-                      : 'bg-zinc-700/80 text-zinc-300'
-                  }`}>
-                    {dev.type}
+                  } className="px-2 py-0.5 text-xs rounded-md font-mono cursor-help bg-zinc-700/80 text-zinc-300">
+                    {dev.type === 'corsair-k100' ? 'bragi' : dev.type}
                   </span>
                 </div>
                 <div data-id={`device-info-${dev.path}`} className="text-xs text-zinc-500 mt-1.5 font-mono">
