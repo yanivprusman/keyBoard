@@ -89,11 +89,15 @@ export default function Home() {
   const toggleGrab = async (dev: Config['devices'][number]) => {
     const currentlyGrabbed = isActuallyGrabbed(dev.path);
     try {
-      await fetch('/api/grab', {
+      const res = await fetch('/api/grab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: dev.path, grab: !currentlyGrabbed }),
       });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      }
       fetchAll();
     } catch { /* ignore */ }
   };

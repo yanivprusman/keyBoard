@@ -139,8 +139,12 @@ static json handleGetStatus(const json&) {
         });
     }
     if (g_bragi.isInitialized()) {
+        std::string k100Path = "corsair-k100";
+        for (const auto& dc : g_config.devices()) {
+            if (dc.type == "corsair-k100") { k100Path = dc.path; break; }
+        }
         grabbed.push_back({
-            {"path", "corsair-k100"},
+            {"path", k100Path},
             {"name", "Corsair K100 RGB (BRAGI)"},
             {"type", "corsair-k100"},
             {"gkeys", true}
