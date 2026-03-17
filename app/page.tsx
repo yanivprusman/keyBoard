@@ -198,21 +198,19 @@ export default function Home() {
             <div
               key={dev.path}
               data-id={`device-${dev.path}`}
-              className="p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 border-l-[3px] border-l-blue-500 flex items-center justify-between"
+              className="group p-4 rounded-lg border border-zinc-700/50 bg-zinc-800/50 flex items-center justify-between"
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2.5">
-                  <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
+                <span data-id={`device-name-${dev.path}`} className="font-medium truncate">{dev.name}</span>
+                <div className="hidden group-hover:block mt-1.5 text-xs text-zinc-500 font-mono">
                   <span data-id={`device-type-${dev.path}`} title={
                     dev.type === 'corsair-k100'
                       ? 'BRAGI protocol — enables G-key detection (G1-G6) via software mode. Standard Linux HID cannot detect G-keys.'
                       : 'Standard evdev grab with key passthrough and numpad remapping.'
-                  } className="text-xs font-mono cursor-help text-zinc-400">
+                  } className="cursor-help">
                     {dev.type === 'corsair-k100' ? 'bragi' : dev.type}
                   </span>
-                </div>
-                <div data-id={`device-info-${dev.path}`} className="text-xs text-zinc-500 mt-1.5 font-mono">
-                  {dev.path} &middot; {dev.vid}:{dev.pid}
+                  <span data-id={`device-info-${dev.path}`}> · {dev.path} · {dev.vid}:{dev.pid}</span>
                 </div>
               </div>
               <button
