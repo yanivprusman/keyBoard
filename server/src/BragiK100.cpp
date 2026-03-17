@@ -228,6 +228,20 @@ bool BragiK100::regrab() {
     if (!m_initialized) return false;
     if (m_grabbed) return true;
 
+    // Drain stale NKRO packets accumulated during ungrab
+    {
+        uint8_t drain[64];
+        int drained = 0;
+        // Set non-blocking temporarily to drain without hanging
+        int flags = fcntl(m_nkroFd, F_GETFL, 0);
+        fcntl(m_nkroFd, F_SETFL, flags | O_NONBLOCK);
+        while (read(m_nkroFd, drain, sizeof(drain)) > 0)
+            drained++;
+        fcntl(m_nkroFd, F_SETFL, flags);  // restore
+        if (drained > 0)
+            fprintf(stderr, "[bragi] Drained %d stale NKRO packets\n", drained);
+    }
+
     // Re-grab evdev to suppress Interface 0 phantom events
     DeviceManager devMgr;
     std::string evdevPath = devMgr.findKeyboardByVidPid(CORSAIR_VID, CORSAIR_K100_PID);
