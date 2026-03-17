@@ -138,7 +138,7 @@ static json handleGetStatus(const json&) {
             {"numLockOn", gd.numLockOn}
         });
     }
-    if (g_bragi.isInitialized()) {
+    if (g_bragi.isGrabbed()) {
         std::string k100Path = "corsair-k100";
         for (const auto& dc : g_config.devices()) {
             if (dc.type == "corsair-k100") { k100Path = dc.path; break; }
@@ -225,31 +225,42 @@ static json handleGrab(const json& req) {
 
     if (dcPtr->type == "corsair-k100") {
         if (grab) {
-            if (g_bragi.isInitialized()) {
+            if (g_bragi.isGrabbed()) {
                 return {{"ok", true}, {"note", "Already grabbed"}};
             }
-            if (!g_bragi.init()) {
-                return {{"error", "Failed to init Corsair K100 BRAGI"}};
+            // If already in SW mode (soft ungrabbed), just regrab
+            if (g_bragi.isInitialized()) {
+                if (!g_bragi.regrab()) {
+                    return {{"error", "Failed to re-grab Corsair K100"}};
+                }
+                applyGkeyMappings();
+                ev.data.fd = g_bragi.nkroFd();
+                epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);
+            } else {
+                // Full init (first time or after full shutdown)
+                if (!g_bragi.init()) {
+                    return {{"error", "Failed to init Corsair K100 BRAGI"}};
+                }
+                applyGkeyMappings();
+                ev.data.fd = g_bragi.nkroFd();
+                epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);
             }
-            applyGkeyMappings();
-            ev.data.fd = g_bragi.nkroFd();
-            epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);
             dcPtr->grab = true;
             g_config.save();
             fprintf(stderr, "[grab] Corsair K100 grabbed\n");
             return {{"ok", true}};
         } else {
-            if (!g_bragi.isInitialized()) {
+            if (!g_bragi.isGrabbed()) {
                 dcPtr->grab = false;
                 g_config.save();
                 return {{"ok", true}, {"note", "Already ungrabbed"}};
             }
-            // Remove from epoll BEFORE shutdown (shutdown closes the fd)
+            // Soft ungrab: stay in SW mode to preserve LED state
             epoll_ctl(g_epfd, EPOLL_CTL_DEL, g_bragi.nkroFd(), nullptr);
-            g_bragi.shutdown();
+            g_bragi.ungrab();
             dcPtr->grab = false;
             g_config.save();
-            fprintf(stderr, "[grab] Corsair K100 ungrabbed\n");
+            fprintf(stderr, "[grab] Corsair K100 ungrabbed (SW mode preserved)\n");
             return {{"ok", true}};
         }
     } else {
@@ -434,7 +445,7 @@ int main(int argc, char* argv[]) {
             }
 
             // BRAGI K100 NKRO data
-            if (g_bragi.isInitialized() && fd == g_bragi.nkroFd()) {
+            if (g_bragi.isGrabbed() && fd == g_bragi.nkroFd()) {
                 g_bragi.processNkroPacket();
                 continue;
             }

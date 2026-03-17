@@ -175,6 +175,7 @@ bool BragiK100::init() {
 
     memset(m_keyState, 0, sizeof(m_keyState));
     m_initialized = true;
+    m_grabbed = true;
     fprintf(stderr, "[bragi] Initialized — all keys from NKRO, G1-G6 → F13-F18\n");
     return true;
 }
@@ -183,6 +184,7 @@ void BragiK100::shutdown() {
     if (m_initialized) {
         releaseAllKeys();
         m_initialized = false;
+        m_grabbed = false;
     }
 
     m_emitter.destroy();
@@ -204,6 +206,49 @@ void BragiK100::shutdown() {
         close(m_nkroFd);
         m_nkroFd = -1;
     }
+}
+
+void BragiK100::ungrab() {
+    if (!m_grabbed) return;
+
+    releaseAllKeys();
+    m_emitter.destroy();
+
+    if (m_evdevFd >= 0) {
+        ioctl(m_evdevFd, EVIOCGRAB, 0);
+        close(m_evdevFd);
+        m_evdevFd = -1;
+    }
+
+    m_grabbed = false;
+    fprintf(stderr, "[bragi] Ungrabbed (staying in SW mode)\n");
+}
+
+bool BragiK100::regrab() {
+    if (!m_initialized) return false;
+    if (m_grabbed) return true;
+
+    // Re-grab evdev to suppress Interface 0 phantom events
+    DeviceManager devMgr;
+    std::string evdevPath = devMgr.findKeyboardByVidPid(CORSAIR_VID, CORSAIR_K100_PID);
+    if (!evdevPath.empty()) {
+        m_evdevFd = devMgr.grabDevice(evdevPath);
+        if (m_evdevFd >= 0)
+            fprintf(stderr, "[bragi] Re-grabbed evdev %s\n", evdevPath.c_str());
+        else
+            fprintf(stderr, "[bragi] Warning: could not re-grab evdev\n");
+    }
+
+    // Re-create uinput virtual device
+    if (!m_emitter.create("K100 BRAGI Keyboard", CORSAIR_VID, 0xFFFF)) {
+        fprintf(stderr, "[bragi] Failed to re-create uinput device\n");
+        return false;
+    }
+
+    memset(m_keyState, 0, sizeof(m_keyState));
+    m_grabbed = true;
+    fprintf(stderr, "[bragi] Re-grabbed (SW mode preserved)\n");
+    return true;
 }
 
 bool BragiK100::processNkroPacket() {

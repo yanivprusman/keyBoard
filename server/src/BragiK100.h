@@ -27,8 +27,14 @@ public:
     // Initialize: open hidraw interfaces, switch to SW mode, grab evdev, create uinput
     bool init();
 
-    // Shutdown: release grabs, restore HW mode, destroy uinput
+    // Shutdown: release grabs, restore HW mode, destroy uinput (full teardown)
     void shutdown();
+
+    // Soft ungrab: release keys, destroy uinput, ungrab evdev — stays in SW mode
+    void ungrab();
+
+    // Soft regrab: re-grab evdev, re-create uinput — assumes already in SW mode
+    bool regrab();
 
     // Process a packet from the NKRO hidraw fd
     // Returns true if any keys changed
@@ -41,6 +47,7 @@ public:
     int nkroFd() const { return m_nkroFd; }
     int evdevFd() const { return m_evdevFd; }
     bool isInitialized() const { return m_initialized; }
+    bool isGrabbed() const { return m_grabbed; }
 
     UInputEmitter& emitter() { return m_emitter; }
 
@@ -59,7 +66,8 @@ private:
     int m_ctrlFd = -1;  // hidraw interface 1 (BRAGI control)
     int m_nkroFd = -1;  // hidraw interface 2 (NKRO bitmap)
     int m_evdevFd = -1;  // evdev device (grabbed to suppress phantom events)
-    bool m_initialized = false;
+    bool m_initialized = false;  // BRAGI connection established (in SW mode)
+    bool m_grabbed = false;      // actively processing events (uinput + evdev grabbed)
 
     UInputEmitter m_emitter;
     bool m_keyState[200] = {};
