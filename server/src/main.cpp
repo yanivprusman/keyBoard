@@ -173,6 +173,36 @@ static json handleSetConfig(const json& req) {
     return {{"error", "Failed to save config"}};
 }
 
+static json handleSetColor(const json& req) {
+    if (!g_bragi.isInitialized()) {
+        return {{"error", "K100 not initialized"}};
+    }
+    int r = req.value("r", 128);
+    int g = req.value("g", 128);
+    int b = req.value("b", 128);
+    if (g_bragi.setAllColor((uint8_t)r, (uint8_t)g, (uint8_t)b)) {
+        return {{"ok", true}};
+    }
+    return {{"error", "Failed to set LED color"}};
+}
+
+static json handleSetKeyColor(const json& req) {
+    if (!g_bragi.isInitialized()) {
+        return {{"error", "K100 not initialized"}};
+    }
+    int led = req.value("led", -1);
+    int r = req.value("r", 128);
+    int g = req.value("g", 128);
+    int b = req.value("b", 128);
+    if (led < 0 || led >= BragiK100::NUM_LEDS) {
+        return {{"error", "Invalid LED index"}};
+    }
+    if (g_bragi.setKeyColor(led, (uint8_t)r, (uint8_t)g, (uint8_t)b)) {
+        return {{"ok", true}};
+    }
+    return {{"error", "Failed to set key color"}};
+}
+
 static json handleGrab(const json& req) {
     if (!req.contains("path")) {
         return {{"error", "Missing 'path' field"}};
@@ -357,6 +387,8 @@ int main(int argc, char* argv[]) {
     g_api.registerCommand("getConfig", handleGetConfig);
     g_api.registerCommand("setConfig", handleSetConfig);
     g_api.registerCommand("grab", handleGrab);
+    g_api.registerCommand("setColor", handleSetColor);
+    g_api.registerCommand("setKeyColor", handleSetKeyColor);
 
     // Set up signal handlers
     signal(SIGINT, sighandler);

@@ -328,3 +328,116 @@ void BragiK100::setGkeyMapping(int gkeyIndex, int linuxKeycode) {
     if (gkeyIndex >= 0 && gkeyIndex < 6)
         m_gkeyOverrides[gkeyIndex] = linuxKeycode;
 }
+
+// ── BRAGI handle operations for LED control ─────────────────────
+
+bool BragiK100::bragiOpenHandle(uint8_t handle, uint16_t resource) {
+    uint8_t pkt[6] = {BRAGI_MAGIC, BRAGI_CMD_OPEN_HANDLE, handle,
+                       (uint8_t)(resource & 0xFF), (uint8_t)(resource >> 8), 0x00};
+    if (!bragiSend(m_ctrlFd, pkt, sizeof(pkt))) return false;
+
+    uint8_t resp[1024];
+    for (int i = 0; i < 10; i++) {
+        int n = bragiRecv(m_ctrlFd, resp, 200);
+        if (n > 2 && resp[1] == BRAGI_CMD_OPEN_HANDLE) {
+            if (resp[2] == 0x03) { // handle busy, close and retry
+                bragiCloseHandle(handle);
+                if (!bragiSend(m_ctrlFd, pkt, sizeof(pkt))) return false;
+                continue;
+            }
+            return resp[2] == 0x00;
+        }
+    }
+    return false;
+}
+
+void BragiK100::bragiCloseHandle(uint8_t handle) {
+    uint8_t pkt[5] = {BRAGI_MAGIC, BRAGI_CMD_CLOSE_HANDLE, 0x01, handle, 0x00};
+    bragiSend(m_ctrlFd, pkt, sizeof(pkt));
+    uint8_t resp[1024];
+    bragiRecv(m_ctrlFd, resp, 200);
+}
+
+bool BragiK100::bragiWriteToHandle(uint8_t handle, const uint8_t* data, size_t len) {
+    // First packet: [magic, WRITE_DATA, handle, len(4 bytes LE), payload...]
+    uint8_t pkt[1024] = {};
+    pkt[0] = BRAGI_MAGIC;
+    pkt[1] = BRAGI_CMD_WRITE_DATA;
+    pkt[2] = handle;
+    pkt[3] = (uint8_t)(len & 0xFF);
+    pkt[4] = (uint8_t)((len >> 8) & 0xFF);
+    pkt[5] = (uint8_t)((len >> 16) & 0xFF);
+    pkt[6] = (uint8_t)((len >> 24) & 0xFF);
+
+    size_t firstChunk = std::min(len, (size_t)(1024 - 7));
+    memcpy(pkt + 7, data, firstChunk);
+    if (!bragiSend(m_ctrlFd, pkt, 1024)) return false;
+
+    uint8_t resp[1024];
+    int n = bragiRecv(m_ctrlFd, resp, 200);
+    if (n <= 0 || resp[2] != 0x00) return false;
+
+    // Continuation packets
+    size_t offset = firstChunk;
+    while (offset < len) {
+        memset(pkt, 0, 1024);
+        pkt[0] = BRAGI_MAGIC;
+        pkt[1] = BRAGI_CMD_CONTINUE_WRITE;
+        pkt[2] = handle;
+        size_t chunk = std::min(len - offset, (size_t)(1024 - 3));
+        memcpy(pkt + 3, data + offset, chunk);
+        if (!bragiSend(m_ctrlFd, pkt, 1024)) return false;
+        n = bragiRecv(m_ctrlFd, resp, 200);
+        if (n <= 0 || resp[2] != 0x00) return false;
+        offset += chunk;
+    }
+    return true;
+}
+
+bool BragiK100::flushColors() {
+    if (!m_initialized) return false;
+
+    bool ok = true;
+
+    // Write to key LEDs (resource 0x0022)
+    if (bragiOpenHandle(0x00, BRAGI_RES_ALT_LIGHTING)) {
+        if (!bragiWriteToHandle(0x00, m_ledBuffer, sizeof(m_ledBuffer)))
+            ok = false;
+        bragiCloseHandle(0x00);
+    } else {
+        ok = false;
+    }
+
+    return ok;
+}
+
+bool BragiK100::setAllColor(uint8_t r, uint8_t g, uint8_t b) {
+    if (!m_initialized) return false;
+
+    // Interleaved RGB with 2-byte offset (192 usable LEDs)
+    for (int i = 0; i < LED_BUF_LEDS; i++) {
+        m_ledBuffer[LED_BUF_OFFSET + i * 3]     = r;
+        m_ledBuffer[LED_BUF_OFFSET + i * 3 + 1] = g;
+        m_ledBuffer[LED_BUF_OFFSET + i * 3 + 2] = b;
+    }
+
+    bool ok = flushColors();
+    if (ok)
+        fprintf(stderr, "[bragi] Set all LEDs to RGB(%d,%d,%d)\n", r, g, b);
+    return ok;
+}
+
+bool BragiK100::setKeyColor(int led, uint8_t r, uint8_t g, uint8_t b) {
+    if (!m_initialized || led < 0 || led >= NUM_LEDS) return false;
+
+    // Interleaved RGB with 2-byte offset
+    if (led >= LED_BUF_LEDS) return false;  // LED 192 not addressable
+    m_ledBuffer[LED_BUF_OFFSET + led * 3]     = r;
+    m_ledBuffer[LED_BUF_OFFSET + led * 3 + 1] = g;
+    m_ledBuffer[LED_BUF_OFFSET + led * 3 + 2] = b;
+
+    bool ok = flushColors();
+    if (ok)
+        fprintf(stderr, "[bragi] Set LED %d to RGB(%d,%d,%d)\n", led, r, g, b);
+    return ok;
+}

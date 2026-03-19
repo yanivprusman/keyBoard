@@ -320,7 +320,12 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            <button data-id="detail-close" onClick={() => setDetailDevice(null)} className="mt-5 w-full py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm font-medium text-zinc-200 transition-colors">
+            {detailDevice.type === 'corsair-k100' && (
+              <button data-id="detail-led-colors" onClick={() => window.open('/color', '_blank')} className="mt-5 w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors">
+                LED Colors
+              </button>
+            )}
+            <button data-id="detail-close" onClick={() => setDetailDevice(null)} className={`${detailDevice.type === 'corsair-k100' ? 'mt-2' : 'mt-5'} w-full py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm font-medium text-zinc-200 transition-colors`}>
               Close
             </button>
           </div>
