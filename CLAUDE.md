@@ -66,10 +66,11 @@ The K100 uses Corsair's BRAGI protocol over USB HID (1024-byte packets on interf
 - **Software mode** (0x02): Host controls input AND LEDs. Required for G-key detection. LEDs go black if host doesn't send RGB data.
 - **Hardware mode** (0x01): Keyboard controls everything from onboard profile. No G-key detection possible.
 - **Resource 0x0001** (RES_LIGHTING): NOT supported on K100 (returns 0x06)
-- **Resource 0x0022** (ALT_LIGHTING): Key LEDs — write planar RGB here
-- **Resource 0x002E** (LIGHTING_EXTRA): Light bar/logo LEDs
-- **193 LED zones** per ckb-next
-- **RGB format**: Planar — `[R0..R192, G0..G192, B0..B192]` = 579 bytes
+- **Resource 0x0022** (ALT_LIGHTING): Key LEDs — write interleaved RGB here
+- **Resource 0x002E** (LIGHTING_EXTRA): Do NOT write — interferes with key LEDs on 0x0022
+- **192 addressable LED zones** (indices 0-191, LED 192 excluded)
+- **RGB format**: Interleaved with 2-byte zero padding — `[0x00, 0x00, R0, G0, B0, R1, G1, B1, ...]` = 579 bytes
+- **Do NOT use 0x12 header byte** — causes severe keyboard input lag; use `0x00, 0x00` padding
 - **G-keys**: NKRO indices 131-136 on interface 2 (hidraw), mapped to F13-F18 by default
 - **SET packet format**: `{0x08, 0x01, prop_id, 0x00, value}` — note padding byte at offset 3
 - **CMD 0x0C crashes the keyboard** — never send it

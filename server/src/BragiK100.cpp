@@ -373,9 +373,27 @@ bool BragiK100::bragiWriteToHandle(uint8_t handle, const uint8_t* data, size_t l
     memcpy(pkt + 7, data, firstChunk);
     if (!bragiSend(m_ctrlFd, pkt, 1024)) return false;
 
+    // Wait for WRITE_DATA response, skipping unrelated packets
     uint8_t resp[1024];
-    int n = bragiRecv(m_ctrlFd, resp, 200);
-    if (n <= 0 || resp[2] != 0x00) return false;
+    bool gotWriteResp = false;
+    for (int i = 0; i < 10; i++) {
+        int n = bragiRecv(m_ctrlFd, resp, 500);
+        if (n <= 0) {
+            fprintf(stderr, "[bragi] writeHandle: no response (attempt %d)\n", i);
+            continue;
+        }
+        if (resp[1] == BRAGI_CMD_WRITE_DATA) {
+            if (resp[2] != 0x00) {
+                fprintf(stderr, "[bragi] writeHandle: error status 0x%02x\n", resp[2]);
+                return false;
+            }
+            gotWriteResp = true;
+            break;
+        }
+        fprintf(stderr, "[bragi] writeHandle: skipped pkt cmd=0x%02x (waiting for 0x%02x)\n",
+                resp[1], BRAGI_CMD_WRITE_DATA);
+    }
+    if (!gotWriteResp) return false;
 
     // Continuation packets
     size_t offset = firstChunk;
@@ -387,8 +405,18 @@ bool BragiK100::bragiWriteToHandle(uint8_t handle, const uint8_t* data, size_t l
         size_t chunk = std::min(len - offset, (size_t)(1024 - 3));
         memcpy(pkt + 3, data + offset, chunk);
         if (!bragiSend(m_ctrlFd, pkt, 1024)) return false;
-        n = bragiRecv(m_ctrlFd, resp, 200);
-        if (n <= 0 || resp[2] != 0x00) return false;
+
+        gotWriteResp = false;
+        for (int i = 0; i < 10; i++) {
+            int n = bragiRecv(m_ctrlFd, resp, 500);
+            if (n <= 0) continue;
+            if (resp[1] == BRAGI_CMD_CONTINUE_WRITE) {
+                if (resp[2] != 0x00) return false;
+                gotWriteResp = true;
+                break;
+            }
+        }
+        if (!gotWriteResp) return false;
         offset += chunk;
     }
     return true;
@@ -397,18 +425,35 @@ bool BragiK100::bragiWriteToHandle(uint8_t handle, const uint8_t* data, size_t l
 bool BragiK100::flushColors() {
     if (!m_initialized) return false;
 
-    bool ok = true;
-
-    // Write to key LEDs (resource 0x0022)
-    if (bragiOpenHandle(0x00, BRAGI_RES_ALT_LIGHTING)) {
-        if (!bragiWriteToHandle(0x00, m_ledBuffer, sizeof(m_ledBuffer)))
-            ok = false;
-        bragiCloseHandle(0x00);
-    } else {
-        ok = false;
+    // Drain stale packets from control channel before LED operations
+    {
+        uint8_t drain[1024];
+        int flags = fcntl(m_ctrlFd, F_GETFL, 0);
+        fcntl(m_ctrlFd, F_SETFL, flags | O_NONBLOCK);
+        int drained = 0;
+        while (read(m_ctrlFd, drain, sizeof(drain)) > 0)
+            drained++;
+        fcntl(m_ctrlFd, F_SETFL, flags);
+        if (drained > 0)
+            fprintf(stderr, "[bragi] Drained %d stale ctrl packets before LED write\n", drained);
     }
 
-    return ok;
+    // Write to key LEDs (resource 0x0022), retry once on failure
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!bragiOpenHandle(0x00, BRAGI_RES_ALT_LIGHTING)) {
+            fprintf(stderr, "[bragi] flushColors: openHandle failed (attempt %d)\n", attempt);
+            continue;
+        }
+        if (!bragiWriteToHandle(0x00, m_ledBuffer, sizeof(m_ledBuffer))) {
+            fprintf(stderr, "[bragi] flushColors: writeHandle failed (attempt %d)\n", attempt);
+            bragiCloseHandle(0x00);
+            continue;
+        }
+        bragiCloseHandle(0x00);
+        return true;
+    }
+
+    return false;
 }
 
 bool BragiK100::setAllColor(uint8_t r, uint8_t g, uint8_t b) {
