@@ -87,6 +87,8 @@ private:
     UInputEmitter m_emitter;
     bool m_keyState[200] = {};
     int m_gkeyOverrides[6] = {-1, -1, -1, -1, -1, -1}; // per-gkey overrides (-1 = use default)
-    // Planar RGB: [R0..R192, G0..G192, B0..B192] = 579 bytes
+    // Interleaved RGB with 2-byte offset; buffer stays at 579 bytes (192 usable LEDs)
+    static constexpr int LED_BUF_OFFSET = 2;
+    static constexpr int LED_BUF_LEDS = NUM_LEDS - 1;  // 192 (LED 192 excluded)
     uint8_t m_ledBuffer[NUM_LEDS * 3] = {};
 };

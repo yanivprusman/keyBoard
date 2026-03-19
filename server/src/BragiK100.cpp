@@ -414,10 +414,12 @@ bool BragiK100::flushColors() {
 bool BragiK100::setAllColor(uint8_t r, uint8_t g, uint8_t b) {
     if (!m_initialized) return false;
 
-    // Planar RGB: [R0..R192, G0..G192, B0..B192]
-    memset(m_ledBuffer, r, NUM_LEDS);
-    memset(m_ledBuffer + NUM_LEDS, g, NUM_LEDS);
-    memset(m_ledBuffer + NUM_LEDS * 2, b, NUM_LEDS);
+    // Interleaved RGB with 2-byte offset (192 usable LEDs)
+    for (int i = 0; i < LED_BUF_LEDS; i++) {
+        m_ledBuffer[LED_BUF_OFFSET + i * 3]     = r;
+        m_ledBuffer[LED_BUF_OFFSET + i * 3 + 1] = g;
+        m_ledBuffer[LED_BUF_OFFSET + i * 3 + 2] = b;
+    }
 
     bool ok = flushColors();
     if (ok)
@@ -428,10 +430,11 @@ bool BragiK100::setAllColor(uint8_t r, uint8_t g, uint8_t b) {
 bool BragiK100::setKeyColor(int led, uint8_t r, uint8_t g, uint8_t b) {
     if (!m_initialized || led < 0 || led >= NUM_LEDS) return false;
 
-    // Planar RGB: R at [led], G at [NUM_LEDS + led], B at [NUM_LEDS*2 + led]
-    m_ledBuffer[led] = r;
-    m_ledBuffer[NUM_LEDS + led] = g;
-    m_ledBuffer[NUM_LEDS * 2 + led] = b;
+    // Interleaved RGB with 2-byte offset
+    if (led >= LED_BUF_LEDS) return false;  // LED 192 not addressable
+    m_ledBuffer[LED_BUF_OFFSET + led * 3]     = r;
+    m_ledBuffer[LED_BUF_OFFSET + led * 3 + 1] = g;
+    m_ledBuffer[LED_BUF_OFFSET + led * 3 + 2] = b;
 
     bool ok = flushColors();
     if (ok)
