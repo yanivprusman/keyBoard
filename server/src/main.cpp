@@ -447,12 +447,13 @@ int main(int argc, char* argv[]) {
             if (g_bragi.init()) {
                 applyGkeyMappings();
 
-                // Restore saved LED colors
+                // Restore saved LED colors (delay for firmware to settle after SW mode switch)
                 const std::string& ledHex = g_config.ledState();
                 if (!ledHex.empty()) {
                     auto buf = hexToLedBuf(ledHex);
                     if (buf.size() == BragiK100::ledBufferSize()) {
                         g_bragi.loadLedBuffer(buf.data(), buf.size());
+                        usleep(500000); // 500ms — K100 firmware needs time after SW mode switch
                         if (g_bragi.flushColors())
                             fprintf(stderr, "[main] Restored LED colors from config\n");
                         else
@@ -496,6 +497,13 @@ int main(int argc, char* argv[]) {
             g_genericDevices.size(),
             g_bragi.isInitialized() ? "active" : "not found");
 
+    // Periodic LED re-flush after startup — K100 firmware acks LED writes via BRAGI
+    // but silently ignores them for up to ~3 minutes after a cold boot/SW mode switch.
+    // Re-flush every 3 seconds for 5 minutes to guarantee LEDs eventually light up.
+    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 30 : 0;
+    int ledReflushInterval = 30;   // 30 × 100ms = 3 seconds between flushes
+    int ledReflushRemaining = 100; // 100 attempts × 3s = 5 minutes
+
     // ── Main epoll loop ─────────────────────────────────────────
 
     struct epoll_event events[MAX_EVENTS];
@@ -505,6 +513,17 @@ int main(int argc, char* argv[]) {
         if (nfds < 0) {
             if (errno == EINTR) continue;
             break;
+        }
+
+        // Periodic LED re-flush after startup until keyboard accepts writes
+        if (ledReflushRemaining > 0 && ledReflushCountdown > 0 && --ledReflushCountdown == 0) {
+            if (g_bragi.isInitialized())
+                g_bragi.flushColors();
+            ledReflushRemaining--;
+            if (ledReflushRemaining > 0)
+                ledReflushCountdown = ledReflushInterval;
+            else
+                fprintf(stderr, "[main] LED re-flush complete (5 min window elapsed)\n");
         }
 
         for (int i = 0; i < nfds; i++) {
