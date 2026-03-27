@@ -66,6 +66,11 @@ public:
     bool setKeyColor(int led, uint8_t r, uint8_t g, uint8_t b);
     bool flushColors();
 
+    // LED buffer access for persistence
+    const uint8_t* ledBuffer() const { return m_ledBuffer; }
+    static constexpr size_t ledBufferSize() { return NUM_LEDS * 3; }
+    void loadLedBuffer(const uint8_t* buf, size_t len);
+
     // BRAGI index to linux keycode map
     static const int bragiToLinux[200];
 

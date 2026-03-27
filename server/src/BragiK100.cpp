@@ -456,6 +456,11 @@ bool BragiK100::flushColors() {
     return false;
 }
 
+void BragiK100::loadLedBuffer(const uint8_t* buf, size_t len) {
+    size_t copyLen = len < sizeof(m_ledBuffer) ? len : sizeof(m_ledBuffer);
+    memcpy(m_ledBuffer, buf, copyLen);
+}
+
 bool BragiK100::setAllColor(uint8_t r, uint8_t g, uint8_t b) {
     if (!m_initialized) return false;
 

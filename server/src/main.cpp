@@ -59,12 +59,41 @@ static int remapNumpad(int code) {
     return code; // no remap
 }
 
+// ── LED state hex encode/decode ──────────────────────────────────
+
+static std::string ledBufToHex(const uint8_t* data, size_t len) {
+    std::string hex;
+    hex.reserve(len * 2);
+    for (size_t i = 0; i < len; i++) {
+        char buf[3];
+        snprintf(buf, sizeof(buf), "%02x", data[i]);
+        hex += buf;
+    }
+    return hex;
+}
+
+static std::vector<uint8_t> hexToLedBuf(const std::string& hex) {
+    std::vector<uint8_t> data;
+    data.reserve(hex.size() / 2);
+    for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+        uint8_t byte = 0;
+        sscanf(hex.c_str() + i, "%2hhx", &byte);
+        data.push_back(byte);
+    }
+    return data;
+}
+
 // ── Global state ────────────────────────────────────────────────
 
 static ConfigManager g_config;
 static DeviceManager g_devMgr;
 static ApiServer g_api;
 static BragiK100 g_bragi;
+
+static void saveLedState() {
+    g_config.setLedState(ledBufToHex(g_bragi.ledBuffer(), BragiK100::ledBufferSize()));
+    g_config.save();
+}
 static int g_epfd = -1;
 
 struct GenericDevice {
@@ -181,6 +210,7 @@ static json handleSetColor(const json& req) {
     int g = req.value("g", 128);
     int b = req.value("b", 128);
     if (g_bragi.setAllColor((uint8_t)r, (uint8_t)g, (uint8_t)b)) {
+        saveLedState();
         return {{"ok", true}};
     }
     return {{"error", "Failed to set LED color"}};
@@ -198,6 +228,7 @@ static json handleSetKeyColor(const json& req) {
         return {{"error", "Invalid LED index"}};
     }
     if (g_bragi.setKeyColor(led, (uint8_t)r, (uint8_t)g, (uint8_t)b)) {
+        saveLedState();
         return {{"ok", true}};
     }
     return {{"error", "Failed to set key color"}};
@@ -415,6 +446,20 @@ int main(int argc, char* argv[]) {
             // Initialize BRAGI K100
             if (g_bragi.init()) {
                 applyGkeyMappings();
+
+                // Restore saved LED colors
+                const std::string& ledHex = g_config.ledState();
+                if (!ledHex.empty()) {
+                    auto buf = hexToLedBuf(ledHex);
+                    if (buf.size() == BragiK100::ledBufferSize()) {
+                        g_bragi.loadLedBuffer(buf.data(), buf.size());
+                        if (g_bragi.flushColors())
+                            fprintf(stderr, "[main] Restored LED colors from config\n");
+                        else
+                            fprintf(stderr, "[main] Failed to flush restored LED colors\n");
+                    }
+                }
+
                 ev.events = EPOLLIN;
                 ev.data.fd = g_bragi.nkroFd();
                 epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &ev);

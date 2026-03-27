@@ -25,6 +25,10 @@ public:
     std::map<std::string, std::string>& gkeyMap() { return m_gkeyMap; }
     std::map<std::string, std::string>& numpadCustomMode() { return m_numpadCustomMode; }
 
+    // LED state persistence (hex-encoded buffer)
+    const std::string& ledState() const { return m_ledState; }
+    void setLedState(const std::string& hex) { m_ledState = hex; }
+
     nlohmann::json toJson() const;
     void fromJson(const nlohmann::json& j);
 
@@ -33,4 +37,5 @@ private:
     std::vector<DeviceConfig> m_devices;
     std::map<std::string, std::string> m_gkeyMap;
     std::map<std::string, std::string> m_numpadCustomMode;
+    std::string m_ledState; // hex-encoded LED buffer
 };

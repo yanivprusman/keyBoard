@@ -53,6 +53,8 @@ nlohmann::json ConfigManager::toJson() const {
     j["devices"] = devArr;
     j["gkeyMap"] = m_gkeyMap;
     j["numpadCustomMode"] = m_numpadCustomMode;
+    if (!m_ledState.empty())
+        j["ledState"] = m_ledState;
     return j;
 }
 
@@ -83,5 +85,10 @@ void ConfigManager::fromJson(const nlohmann::json& j) {
         for (auto& [k, v] : j["numpadCustomMode"].items()) {
             m_numpadCustomMode[k] = v.get<std::string>();
         }
+    }
+
+    m_ledState.clear();
+    if (j.contains("ledState") && j["ledState"].is_string()) {
+        m_ledState = j["ledState"].get<std::string>();
     }
 }
