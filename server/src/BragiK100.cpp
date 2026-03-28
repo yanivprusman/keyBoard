@@ -337,10 +337,15 @@ bool BragiK100::bragiOpenHandle(uint8_t handle, uint16_t resource) {
     if (!bragiSend(m_ctrlFd, pkt, sizeof(pkt))) return false;
 
     uint8_t resp[1024];
+    int busyRetries = 0;
     for (int i = 0; i < 10; i++) {
         int n = bragiRecv(m_ctrlFd, resp, 200);
         if (n > 2 && resp[1] == BRAGI_CMD_OPEN_HANDLE) {
             if (resp[2] == 0x03) { // handle busy, close and retry
+                if (++busyRetries > 2) {
+                    fprintf(stderr, "[bragi] openHandle: giving up after %d busy retries\n", busyRetries);
+                    return false;
+                }
                 bragiCloseHandle(handle);
                 if (!bragiSend(m_ctrlFd, pkt, sizeof(pkt))) return false;
                 continue;

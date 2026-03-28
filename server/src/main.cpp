@@ -499,10 +499,10 @@ int main(int argc, char* argv[]) {
 
     // Periodic LED re-flush after startup — K100 firmware acks LED writes via BRAGI
     // but silently ignores them for up to ~3 minutes after a cold boot/SW mode switch.
-    // Re-flush every 500ms for 5 minutes to catch the ready window quickly.
-    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 5 : 0;
-    int ledReflushInterval = 5;    // 5 × 100ms = 500ms between flushes
-    int ledReflushRemaining = 600; // 600 attempts × 500ms = 5 minutes
+    // Re-flush every 3s for 5 minutes to catch the ready window without burning CPU.
+    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 30 : 0;
+    int ledReflushInterval = 30;   // 30 × 100ms = 3s between flushes
+    int ledReflushRemaining = 100; // 100 attempts × 3s = 5 minutes
 
     // ── Main epoll loop ─────────────────────────────────────────
 
@@ -517,13 +517,18 @@ int main(int argc, char* argv[]) {
 
         // Periodic LED re-flush after startup until keyboard accepts writes
         if (ledReflushRemaining > 0 && ledReflushCountdown > 0 && --ledReflushCountdown == 0) {
-            if (g_bragi.isInitialized())
-                g_bragi.flushColors();
-            ledReflushRemaining--;
-            if (ledReflushRemaining > 0)
-                ledReflushCountdown = ledReflushInterval;
-            else
-                fprintf(stderr, "[main] LED re-flush complete (5 min window elapsed)\n");
+            if (g_bragi.isInitialized()) {
+                if (g_bragi.flushColors()) {
+                    fprintf(stderr, "[main] LED re-flush succeeded, stopping re-flush\n");
+                    ledReflushRemaining = 0;
+                } else {
+                    ledReflushRemaining--;
+                    if (ledReflushRemaining > 0)
+                        ledReflushCountdown = ledReflushInterval;
+                    else
+                        fprintf(stderr, "[main] LED re-flush gave up (5 min window elapsed)\n");
+                }
+            }
         }
 
         for (int i = 0; i < nfds; i++) {
