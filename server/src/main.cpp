@@ -499,10 +499,11 @@ int main(int argc, char* argv[]) {
 
     // Periodic LED re-flush after startup — K100 firmware acks LED writes via BRAGI
     // but silently ignores them for up to ~3 minutes after a cold boot/SW mode switch.
-    // Re-flush every 3s for 5 minutes to catch the ready window without burning CPU.
-    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 30 : 0;
-    int ledReflushInterval = 30;   // 30 × 100ms = 3s between flushes
-    int ledReflushRemaining = 100; // 100 attempts × 3s = 5 minutes
+    // Re-flush every 5s for 4 minutes to catch the ready window.
+    // IMPORTANT: Do NOT stop on first success — the firmware ACKs writes it ignores.
+    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 50 : 0;
+    int ledReflushInterval = 50;   // 50 × 100ms = 5s between flushes
+    int ledReflushRemaining = 48;  // 48 attempts × 5s = 4 minutes
 
     // ── Main epoll loop ─────────────────────────────────────────
 
@@ -515,20 +516,19 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        // Periodic LED re-flush after startup until keyboard accepts writes
+        // Periodic LED re-flush — keep sending for the full window since firmware
+        // ACKs writes it silently ignores during the post-boot settling period
         if (ledReflushRemaining > 0 && ledReflushCountdown > 0 && --ledReflushCountdown == 0) {
             if (g_bragi.isInitialized()) {
-                if (g_bragi.flushColors()) {
-                    fprintf(stderr, "[main] LED re-flush succeeded, stopping re-flush\n");
-                    ledReflushRemaining = 0;
-                } else {
-                    ledReflushRemaining--;
-                    if (ledReflushRemaining > 0)
-                        ledReflushCountdown = ledReflushInterval;
-                    else
-                        fprintf(stderr, "[main] LED re-flush gave up (5 min window elapsed)\n");
-                }
+                bool ok = g_bragi.flushColors();
+                fprintf(stderr, "[main] LED re-flush %d/%d %s\n",
+                        48 - ledReflushRemaining + 1, 48, ok ? "ok" : "FAIL");
             }
+            ledReflushRemaining--;
+            if (ledReflushRemaining > 0)
+                ledReflushCountdown = ledReflushInterval;
+            else
+                fprintf(stderr, "[main] LED re-flush window complete\n");
         }
 
         for (int i = 0; i < nfds; i++) {
