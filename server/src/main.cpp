@@ -499,11 +499,11 @@ int main(int argc, char* argv[]) {
 
     // Periodic LED re-flush after startup — K100 firmware acks LED writes via BRAGI
     // but silently ignores them for up to ~3 minutes after a cold boot/SW mode switch.
-    // Re-flush every 5s for 4 minutes to catch the ready window.
+    // Re-flush every 2s for 5 minutes to catch the ready window as fast as possible.
     // IMPORTANT: Do NOT stop on first success — the firmware ACKs writes it ignores.
-    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 50 : 0;
-    int ledReflushInterval = 50;   // 50 × 100ms = 5s between flushes
-    int ledReflushRemaining = 48;  // 48 attempts × 5s = 4 minutes
+    int ledReflushCountdown = g_bragi.isInitialized() && !g_config.ledState().empty() ? 20 : 0;
+    int ledReflushInterval = 20;    // 20 × 100ms = 2s between flushes
+    int ledReflushRemaining = 150;  // 150 attempts × 2s = 5 minutes
 
     // ── Main epoll loop ─────────────────────────────────────────
 
@@ -522,7 +522,7 @@ int main(int argc, char* argv[]) {
             if (g_bragi.isInitialized()) {
                 bool ok = g_bragi.flushColors();
                 fprintf(stderr, "[main] LED re-flush %d/%d %s\n",
-                        48 - ledReflushRemaining + 1, 48, ok ? "ok" : "FAIL");
+                        150 - ledReflushRemaining + 1, 150, ok ? "ok" : "FAIL");
             }
             ledReflushRemaining--;
             if (ledReflushRemaining > 0)
