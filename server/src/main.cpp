@@ -533,6 +533,7 @@ int main(int argc, char* argv[]) {
 
         for (int i = 0; i < nfds; i++) {
             int fd = events[i].data.fd;
+            uint32_t evflags = events[i].events;
 
             // API listener — accept new client
             if (fd == g_api.listenerFd()) {
@@ -547,37 +548,46 @@ int main(int argc, char* argv[]) {
 
             // BRAGI K100 NKRO data
             if (g_bragi.isGrabbed() && fd == g_bragi.nkroFd()) {
+                if (evflags & (EPOLLERR | EPOLLHUP)) {
+                    fprintf(stderr, "[main] K100 NKRO fd error/hangup — releasing device\n");
+                    epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
+                    g_bragi.shutdown();
+                    continue;
+                }
                 g_bragi.processNkroPacket();
                 continue;
             }
 
             // Generic evdev event
             bool isEvdev = false;
-            for (auto& gd : g_genericDevices) {
-                if (fd == gd.evdevFd) {
+            for (auto it = g_genericDevices.begin(); it != g_genericDevices.end(); ++it) {
+                if (fd == it->evdevFd) {
                     isEvdev = true;
+                    if (evflags & (EPOLLERR | EPOLLHUP)) {
+                        fprintf(stderr, "[main] Device %s fd error/hangup — releasing\n", it->path.c_str());
+                        epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
+                        it->emitter.destroy();
+                        g_devMgr.ungrabDevice(it->evdevFd);
+                        g_genericDevices.erase(it);
+                        break;
+                    }
                     struct input_event ie;
                     while (read(fd, &ie, sizeof(ie)) == (ssize_t)sizeof(ie)) {
                         if (ie.type == EV_KEY) {
-                            // Track NumLock state
                             if (ie.code == KEY_NUMLOCK && ie.value == 1) {
-                                gd.numLockOn = !gd.numLockOn;
+                                it->numLockOn = !it->numLockOn;
                                 fprintf(stderr, "[device] NumLock %s\n",
-                                        gd.numLockOn ? "ON (regular)" : "OFF (custom)");
+                                        it->numLockOn ? "ON (regular)" : "OFF (custom)");
                             }
 
-                            // NumLock OFF = custom mode: remap numpad keys
                             int code = ie.code;
-                            if (!gd.numLockOn) {
+                            if (!it->numLockOn) {
                                 code = remapNumpad(code);
                             }
 
-                            gd.emitter.emitKey(code, ie.value);
+                            it->emitter.emitKey(code, ie.value);
                         } else if (ie.type == EV_SYN) {
-                            gd.emitter.emitSyn();
-                        } else {
-                            // Pass through other event types (EV_MSC, etc.)
-                            // For now just forward SYN and KEY
+                            it->emitter.emitSyn();
                         }
                     }
                     break;
@@ -590,6 +600,11 @@ int main(int argc, char* argv[]) {
             for (int clientFd : g_api.clients()) {
                 if (fd == clientFd) {
                     isClient = true;
+                    if (evflags & (EPOLLERR | EPOLLHUP)) {
+                        epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
+                        g_api.removeClient(fd);
+                        break;
+                    }
                     if (g_api.processClient(fd)) {
                         epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
                     }
