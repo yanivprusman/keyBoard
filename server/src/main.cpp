@@ -505,6 +505,11 @@ int main(int argc, char* argv[]) {
     int ledReflushInterval = 20;    // 20 × 100ms = 2s between flushes
     int ledReflushRemaining = 150;  // 150 attempts × 2s = 5 minutes
 
+    // USB reconnection timer — activated on NKRO hangup (USB hub disconnect)
+    int reconnectCountdown = 0;     // 0 = disabled
+    int reconnectInterval = 30;     // 30 × 100ms = 3s between attempts
+    int reconnectRemaining = 0;     // max attempts (set on disconnect)
+
     // ── Main epoll loop ─────────────────────────────────────────
 
     struct epoll_event events[MAX_EVENTS];
@@ -531,6 +536,46 @@ int main(int argc, char* argv[]) {
                 fprintf(stderr, "[main] LED re-flush window complete\n");
         }
 
+        // USB reconnection — periodically try to re-init K100 after hub disconnect
+        if (reconnectRemaining > 0 && reconnectCountdown > 0 && --reconnectCountdown == 0) {
+            if (g_bragi.init()) {
+                applyGkeyMappings();
+
+                struct epoll_event rev = {};
+                rev.events = EPOLLIN;
+                rev.data.fd = g_bragi.nkroFd();
+                epoll_ctl(g_epfd, EPOLL_CTL_ADD, g_bragi.nkroFd(), &rev);
+
+                // Restore LED colors from config
+                const std::string& ledHex = g_config.ledState();
+                if (!ledHex.empty()) {
+                    auto buf = hexToLedBuf(ledHex);
+                    if (buf.size() == BragiK100::ledBufferSize()) {
+                        g_bragi.loadLedBuffer(buf.data(), buf.size());
+                        usleep(500000);
+                        g_bragi.flushColors();
+                    }
+                }
+
+                // Restart LED re-flush window for the reconnected device
+                ledReflushCountdown = !ledHex.empty() ? ledReflushInterval : 0;
+                ledReflushRemaining = 150;
+
+                reconnectCountdown = 0;
+                reconnectRemaining = 0;
+                fprintf(stderr, "[main] K100 reconnected successfully\n");
+            } else {
+                reconnectRemaining--;
+                if (reconnectRemaining > 0) {
+                    reconnectCountdown = reconnectInterval;
+                    if (reconnectRemaining % 10 == 0)
+                        fprintf(stderr, "[main] K100 reconnect — %d attempts remaining\n", reconnectRemaining);
+                } else {
+                    fprintf(stderr, "[main] K100 reconnect gave up after 5min — restart service to retry\n");
+                }
+            }
+        }
+
         for (int i = 0; i < nfds; i++) {
             int fd = events[i].data.fd;
             uint32_t evflags = events[i].events;
@@ -549,9 +594,12 @@ int main(int argc, char* argv[]) {
             // BRAGI K100 NKRO data
             if (g_bragi.isGrabbed() && fd == g_bragi.nkroFd()) {
                 if (evflags & (EPOLLERR | EPOLLHUP)) {
-                    fprintf(stderr, "[main] K100 NKRO fd error/hangup — releasing device\n");
+                    fprintf(stderr, "[main] K100 NKRO fd error/hangup — USB disconnect detected\n");
                     epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
                     g_bragi.shutdown();
+                    reconnectCountdown = reconnectInterval;
+                    reconnectRemaining = 100; // 100 × 3s = 5 minutes
+                    fprintf(stderr, "[main] Will attempt reconnection every 3s for 5min\n");
                     continue;
                 }
                 g_bragi.processNkroPacket();
