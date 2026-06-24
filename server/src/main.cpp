@@ -126,6 +126,7 @@ static int keyNameToCode(const std::string& name) {
 
 static void applyGkeyMappings() {
     auto& gmap = g_config.gkeyMap();
+    auto& gcmd = g_config.gkeyCommands();
     for (int g = 0; g < 6; g++) {
         char gname[4];
         snprintf(gname, sizeof(gname), "G%d", g + 1);
@@ -135,6 +136,9 @@ static void applyGkeyMappings() {
             if (code >= 0)
                 g_bragi.setGkeyMapping(g, code);
         }
+        auto cit = gcmd.find(gname);
+        if (cit != gcmd.end())
+            g_bragi.setGkeyCommand(g, cit->second);
     }
 }
 

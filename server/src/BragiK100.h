@@ -2,6 +2,7 @@
 #include "UInputEmitter.h"
 #include <cstdint>
 #include <functional>
+#include <string>
 
 class BragiK100 {
 public:
@@ -61,6 +62,10 @@ public:
     // Custom G-key mapping (bragi index → linux keycode override)
     void setGkeyMapping(int gkeyIndex, int linuxKeycode);
 
+    // Bind a shell command to a G-key (0=G1 … 5=G6). When set, pressing that
+    // G-key launches the command (detached) instead of emitting its keycode.
+    void setGkeyCommand(int gkeyIndex, const std::string& cmd);
+
     // LED control
     bool setAllColor(uint8_t r, uint8_t g, uint8_t b);
     bool setKeyColor(int led, uint8_t r, uint8_t g, uint8_t b);
@@ -83,6 +88,9 @@ private:
     void bragiCloseHandle(uint8_t handle);
     bool bragiWriteToHandle(uint8_t handle, const uint8_t* data, size_t len);
 
+    // Launch a shell command detached (double-fork) so it outlives this server.
+    static void launchCommand(const std::string& cmd);
+
     int m_ctrlFd = -1;  // hidraw interface 1 (BRAGI control)
     int m_nkroFd = -1;  // hidraw interface 2 (NKRO bitmap)
     int m_evdevFd = -1;  // evdev device (grabbed to suppress phantom events)
@@ -92,6 +100,7 @@ private:
     UInputEmitter m_emitter;
     bool m_keyState[200] = {};
     int m_gkeyOverrides[6] = {-1, -1, -1, -1, -1, -1}; // per-gkey overrides (-1 = use default)
+    std::string m_gkeyCommands[6];                     // per-gkey shell command ("" = none)
     // Interleaved RGB with 2-byte offset; buffer stays at 579 bytes (192 usable LEDs)
     static constexpr int LED_BUF_OFFSET = 2;
     static constexpr int LED_BUF_LEDS = NUM_LEDS - 1;  // 192 (LED 192 excluded)

@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <linux/input.h>
 #include <linux/hidraw.h>
+#include <sys/wait.h>
 
 // BRAGI NKRO index → Linux keycode mapping
 const int BragiK100::bragiToLinux[200] = {
@@ -289,6 +290,19 @@ bool BragiK100::processNkroPacket() {
 
         if (pressed != m_keyState[idx]) {
             m_keyState[idx] = pressed;
+
+            // A G-key with a bound command launches it on press and emits no
+            // key (its identity is the BRAGI NKRO index, not the F13.. remap).
+            if (idx >= GKEY_BASE && idx < GKEY_END &&
+                !m_gkeyCommands[idx - GKEY_BASE].empty()) {
+                if (pressed) {
+                    fprintf(stderr, "[bragi] G%d pressed -> launch: %s\n",
+                            idx - GKEY_BASE + 1, m_gkeyCommands[idx - GKEY_BASE].c_str());
+                    launchCommand(m_gkeyCommands[idx - GKEY_BASE]);
+                }
+                continue;
+            }
+
             m_emitter.emitKey(linuxKey, pressed ? 1 : 0);
             changed = true;
 
@@ -327,6 +341,30 @@ void BragiK100::releaseAllKeys() {
 void BragiK100::setGkeyMapping(int gkeyIndex, int linuxKeycode) {
     if (gkeyIndex >= 0 && gkeyIndex < 6)
         m_gkeyOverrides[gkeyIndex] = linuxKeycode;
+}
+
+void BragiK100::setGkeyCommand(int gkeyIndex, const std::string& cmd) {
+    if (gkeyIndex >= 0 && gkeyIndex < 6)
+        m_gkeyCommands[gkeyIndex] = cmd;
+}
+
+// Double-fork so the grandchild is reparented to init and auto-reaped — the
+// epoll loop never blocks on it and no zombie accumulates.
+void BragiK100::launchCommand(const std::string& cmd) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "[bragi] launchCommand fork failed\n");
+        return;
+    }
+    if (pid == 0) {
+        setsid();
+        pid_t pid2 = fork();
+        if (pid2 < 0) _exit(127);
+        if (pid2 > 0) _exit(0);  // intermediate child exits immediately
+        execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
+        _exit(127);  // exec failed
+    }
+    waitpid(pid, nullptr, 0);  // reap the short-lived intermediate child
 }
 
 // ── BRAGI handle operations for LED control ─────────────────────

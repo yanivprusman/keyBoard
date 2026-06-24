@@ -23,6 +23,9 @@ public:
     std::vector<DeviceConfig>& devices() { return m_devices; }
     const std::vector<DeviceConfig>& devices() const { return m_devices; }
     std::map<std::string, std::string>& gkeyMap() { return m_gkeyMap; }
+    // Per-G-key shell command: G-key name (e.g. "G1") -> command run on press.
+    // When set, the G-key launches the command instead of emitting its keycode.
+    std::map<std::string, std::string>& gkeyCommands() { return m_gkeyCommands; }
     std::map<std::string, std::string>& numpadCustomMode() { return m_numpadCustomMode; }
 
     // LED state persistence (hex-encoded buffer)
@@ -36,6 +39,7 @@ private:
     std::string m_path;
     std::vector<DeviceConfig> m_devices;
     std::map<std::string, std::string> m_gkeyMap;
+    std::map<std::string, std::string> m_gkeyCommands;
     std::map<std::string, std::string> m_numpadCustomMode;
     std::string m_ledState; // hex-encoded LED buffer
 };
