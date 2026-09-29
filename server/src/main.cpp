@@ -512,7 +512,12 @@ int main(int argc, char* argv[]) {
     // USB reconnection timer — activated on NKRO hangup (USB hub disconnect)
     int reconnectCountdown = 0;     // 0 = disabled
     int reconnectInterval = 30;     // 30 × 100ms = 3s between attempts
-    int reconnectRemaining = 0;     // max attempts (set on disconnect)
+    // Attempts since the disconnect; 0 = not reconnecting. Never gives up: the usual cause is
+    // a KVM switch to the other machine, which can last hours, and giving up after 5min left
+    // every G-key dead until someone restarted the service (Sep 24 → Sep 30, 2026). After the
+    // first 5min the interval stretches to 10s -- a keyboard that is away for long does not
+    // need a probe every 3s, and each failed probe logs a line.
+    int reconnectAttempts = 0;
 
     // ── Main epoll loop ─────────────────────────────────────────
 
@@ -541,7 +546,7 @@ int main(int argc, char* argv[]) {
         }
 
         // USB reconnection — periodically try to re-init K100 after hub disconnect
-        if (reconnectRemaining > 0 && reconnectCountdown > 0 && --reconnectCountdown == 0) {
+        if (reconnectAttempts > 0 && reconnectCountdown > 0 && --reconnectCountdown == 0) {
             if (g_bragi.init()) {
                 applyGkeyMappings();
 
@@ -566,17 +571,13 @@ int main(int argc, char* argv[]) {
                 ledReflushRemaining = 150;
 
                 reconnectCountdown = 0;
-                reconnectRemaining = 0;
-                fprintf(stderr, "[main] K100 reconnected successfully\n");
+                fprintf(stderr, "[main] K100 reconnected successfully after %d attempts\n", reconnectAttempts);
+                reconnectAttempts = 0;
             } else {
-                reconnectRemaining--;
-                if (reconnectRemaining > 0) {
-                    reconnectCountdown = reconnectInterval;
-                    if (reconnectRemaining % 10 == 0)
-                        fprintf(stderr, "[main] K100 reconnect — %d attempts remaining\n", reconnectRemaining);
-                } else {
-                    fprintf(stderr, "[main] K100 reconnect gave up after 5min — restart service to retry\n");
-                }
+                reconnectAttempts++;
+                reconnectCountdown = reconnectAttempts < 100 ? reconnectInterval : 100;  // 3s, then 10s
+                if (reconnectAttempts == 100)
+                    fprintf(stderr, "[main] K100 still away after 5min — probing every 10s from now on\n");
             }
         }
 
@@ -602,8 +603,8 @@ int main(int argc, char* argv[]) {
                     epoll_ctl(g_epfd, EPOLL_CTL_DEL, fd, nullptr);
                     g_bragi.shutdown();
                     reconnectCountdown = reconnectInterval;
-                    reconnectRemaining = 100; // 100 × 3s = 5 minutes
-                    fprintf(stderr, "[main] Will attempt reconnection every 3s for 5min\n");
+                    reconnectAttempts = 1;
+                    fprintf(stderr, "[main] Will attempt reconnection every 3s, then every 10s after 5min\n");
                     continue;
                 }
                 g_bragi.processNkroPacket();
