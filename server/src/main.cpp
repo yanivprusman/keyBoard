@@ -139,6 +139,8 @@ static void applyGkeyMappings() {
         auto cit = gcmd.find(gname);
         if (cit != gcmd.end())
             g_bragi.setGkeyCommand(g, cit->second);
+        auto ccit = gcmd.find(std::string("Ctrl+") + gname);
+        g_bragi.setGkeyCtrlCommand(g, ccit != gcmd.end() ? ccit->second : "");
     }
 }
 

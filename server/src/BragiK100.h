@@ -66,6 +66,11 @@ public:
     // G-key launches the command (detached) instead of emitting its keycode.
     void setGkeyCommand(int gkeyIndex, const std::string& cmd);
 
+    // Bind a shell command to Ctrl+G-key. Takes precedence over the plain
+    // command while either Ctrl is held; with no Ctrl binding, Ctrl+G-key
+    // behaves exactly like the bare G-key.
+    void setGkeyCtrlCommand(int gkeyIndex, const std::string& cmd);
+
     // LED control
     bool setAllColor(uint8_t r, uint8_t g, uint8_t b);
     bool setKeyColor(int led, uint8_t r, uint8_t g, uint8_t b);
@@ -101,6 +106,10 @@ private:
     bool m_keyState[200] = {};
     int m_gkeyOverrides[6] = {-1, -1, -1, -1, -1, -1}; // per-gkey overrides (-1 = use default)
     std::string m_gkeyCommands[6];                     // per-gkey shell command ("" = none)
+    std::string m_gkeyCtrlCommands[6];                 // per-gkey Ctrl+G shell command ("" = none)
+    bool m_gkeyLaunched[6] = {};                       // press launched a command → swallow its release
+    static constexpr int BRAGI_LEFTCTRL = 105;
+    static constexpr int BRAGI_RIGHTCTRL = 109;
     // Interleaved RGB with 2-byte offset; buffer stays at 579 bytes (192 usable LEDs)
     static constexpr int LED_BUF_OFFSET = 2;
     static constexpr int LED_BUF_LEDS = NUM_LEDS - 1;  // 192 (LED 192 excluded)

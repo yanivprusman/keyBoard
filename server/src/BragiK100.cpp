@@ -293,14 +293,27 @@ bool BragiK100::processNkroPacket() {
 
             // A G-key with a bound command launches it on press and emits no
             // key (its identity is the BRAGI NKRO index, not the F13.. remap).
-            if (idx >= GKEY_BASE && idx < GKEY_END &&
-                !m_gkeyCommands[idx - GKEY_BASE].empty()) {
+            // Ctrl+G uses its own binding when there is one. Ctrl sits at a
+            // lower NKRO index than the G-keys, so its state in this same
+            // packet is already applied by the time we get here.
+            if (idx >= GKEY_BASE && idx < GKEY_END) {
+                int g = idx - GKEY_BASE;
                 if (pressed) {
-                    fprintf(stderr, "[bragi] G%d pressed -> launch: %s\n",
-                            idx - GKEY_BASE + 1, m_gkeyCommands[idx - GKEY_BASE].c_str());
-                    launchCommand(m_gkeyCommands[idx - GKEY_BASE]);
+                    bool ctrl = m_keyState[BRAGI_LEFTCTRL] || m_keyState[BRAGI_RIGHTCTRL];
+                    const std::string& cmd = (ctrl && !m_gkeyCtrlCommands[g].empty())
+                        ? m_gkeyCtrlCommands[g] : m_gkeyCommands[g];
+                    if (!cmd.empty()) {
+                        fprintf(stderr, "[bragi] %sG%d pressed -> launch: %s\n",
+                                (ctrl && !m_gkeyCtrlCommands[g].empty()) ? "Ctrl+" : "",
+                                g + 1, cmd.c_str());
+                        launchCommand(cmd);
+                        m_gkeyLaunched[g] = true;
+                        continue;
+                    }
+                } else if (m_gkeyLaunched[g]) {
+                    m_gkeyLaunched[g] = false;
+                    continue;
                 }
-                continue;
             }
 
             m_emitter.emitKey(linuxKey, pressed ? 1 : 0);
@@ -346,6 +359,11 @@ void BragiK100::setGkeyMapping(int gkeyIndex, int linuxKeycode) {
 void BragiK100::setGkeyCommand(int gkeyIndex, const std::string& cmd) {
     if (gkeyIndex >= 0 && gkeyIndex < 6)
         m_gkeyCommands[gkeyIndex] = cmd;
+}
+
+void BragiK100::setGkeyCtrlCommand(int gkeyIndex, const std::string& cmd) {
+    if (gkeyIndex >= 0 && gkeyIndex < 6)
+        m_gkeyCtrlCommands[gkeyIndex] = cmd;
 }
 
 // Double-fork so the grandchild is reparented to init and auto-reaped — the
