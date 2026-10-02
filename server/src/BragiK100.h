@@ -71,8 +71,10 @@ public:
     // behaves exactly like the bare G-key.
     void setGkeyCtrlCommand(int gkeyIndex, const std::string& cmd);
 
-    // Same for Shift+G-key. With both modifiers held, Ctrl's binding wins.
+    // Same for Shift+G-key and Alt+G-key. With several modifiers held, the
+    // first bound one wins, in the order Ctrl, Shift, Alt.
     void setGkeyShiftCommand(int gkeyIndex, const std::string& cmd);
+    void setGkeyAltCommand(int gkeyIndex, const std::string& cmd);
 
     // LED control
     bool setAllColor(uint8_t r, uint8_t g, uint8_t b);
@@ -111,11 +113,14 @@ private:
     std::string m_gkeyCommands[6];                     // per-gkey shell command ("" = none)
     std::string m_gkeyCtrlCommands[6];                 // per-gkey Ctrl+G shell command ("" = none)
     std::string m_gkeyShiftCommands[6];                // per-gkey Shift+G shell command ("" = none)
+    std::string m_gkeyAltCommands[6];                  // per-gkey Alt+G shell command ("" = none)
     bool m_gkeyLaunched[6] = {};                       // press launched a command → swallow its release
     static constexpr int BRAGI_LEFTCTRL = 105;
     static constexpr int BRAGI_RIGHTCTRL = 109;
     static constexpr int BRAGI_LEFTSHIFT = 106;
     static constexpr int BRAGI_RIGHTSHIFT = 110;
+    static constexpr int BRAGI_LEFTALT = 107;
+    static constexpr int BRAGI_RIGHTALT = 111;
     // Interleaved RGB with 2-byte offset; buffer stays at 579 bytes (192 usable LEDs)
     static constexpr int LED_BUF_OFFSET = 2;
     static constexpr int LED_BUF_LEDS = NUM_LEDS - 1;  // 192 (LED 192 excluded)
