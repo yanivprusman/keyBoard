@@ -76,6 +76,11 @@ public:
     void setGkeyShiftCommand(int gkeyIndex, const std::string& cmd);
     void setGkeyAltCommand(int gkeyIndex, const std::string& cmd);
 
+    // Bind a shell command to Ctrl+Alt+G-key. Checked before the single-modifier
+    // bindings, so Ctrl+Alt+G is not swallowed by Ctrl+G; with no Ctrl+Alt
+    // binding, the single-modifier order above applies.
+    void setGkeyCtrlAltCommand(int gkeyIndex, const std::string& cmd);
+
     // LED control
     bool setAllColor(uint8_t r, uint8_t g, uint8_t b);
     bool setKeyColor(int led, uint8_t r, uint8_t g, uint8_t b);
@@ -114,6 +119,7 @@ private:
     std::string m_gkeyCtrlCommands[6];                 // per-gkey Ctrl+G shell command ("" = none)
     std::string m_gkeyShiftCommands[6];                // per-gkey Shift+G shell command ("" = none)
     std::string m_gkeyAltCommands[6];                  // per-gkey Alt+G shell command ("" = none)
+    std::string m_gkeyCtrlAltCommands[6];              // per-gkey Ctrl+Alt+G shell command ("" = none)
     bool m_gkeyLaunched[6] = {};                       // press launched a command → swallow its release
     static constexpr int BRAGI_LEFTCTRL = 105;
     static constexpr int BRAGI_RIGHTCTRL = 109;

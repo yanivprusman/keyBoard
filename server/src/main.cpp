@@ -145,6 +145,8 @@ static void applyGkeyMappings() {
         g_bragi.setGkeyShiftCommand(g, scit != gcmd.end() ? scit->second : "");
         auto acit = gcmd.find(std::string("Alt+") + gname);
         g_bragi.setGkeyAltCommand(g, acit != gcmd.end() ? acit->second : "");
+        auto cacit = gcmd.find(std::string("Ctrl+Alt+") + gname);
+        g_bragi.setGkeyCtrlAltCommand(g, cacit != gcmd.end() ? cacit->second : "");
     }
 }
 

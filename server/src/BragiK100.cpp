@@ -293,7 +293,7 @@ bool BragiK100::processNkroPacket() {
 
             // A G-key with a bound command launches it on press and emits no
             // key (its identity is the BRAGI NKRO index, not the F13.. remap).
-            // Ctrl+G / Shift+G / Alt+G use their own binding when there is one. Modifiers sit at a
+            // Ctrl+Alt+G / Ctrl+G / Shift+G / Alt+G use their own binding when there is one. Modifiers sit at a
             // lower NKRO index than the G-keys, so their state in this same
             // packet is already applied by the time we get here.
             if (idx >= GKEY_BASE && idx < GKEY_END) {
@@ -304,7 +304,9 @@ bool BragiK100::processNkroPacket() {
                     bool alt = m_keyState[BRAGI_LEFTALT] || m_keyState[BRAGI_RIGHTALT];
                     const char* mod = "";
                     const std::string* cmdp = &m_gkeyCommands[g];
-                    if (ctrl && !m_gkeyCtrlCommands[g].empty()) {
+                    if (ctrl && alt && !m_gkeyCtrlAltCommands[g].empty()) {
+                        mod = "Ctrl+Alt+"; cmdp = &m_gkeyCtrlAltCommands[g];
+                    } else if (ctrl && !m_gkeyCtrlCommands[g].empty()) {
                         mod = "Ctrl+"; cmdp = &m_gkeyCtrlCommands[g];
                     } else if (shift && !m_gkeyShiftCommands[g].empty()) {
                         mod = "Shift+"; cmdp = &m_gkeyShiftCommands[g];
@@ -383,6 +385,11 @@ void BragiK100::setGkeyShiftCommand(int gkeyIndex, const std::string& cmd) {
 void BragiK100::setGkeyAltCommand(int gkeyIndex, const std::string& cmd) {
     if (gkeyIndex >= 0 && gkeyIndex < 6)
         m_gkeyAltCommands[gkeyIndex] = cmd;
+}
+
+void BragiK100::setGkeyCtrlAltCommand(int gkeyIndex, const std::string& cmd) {
+    if (gkeyIndex >= 0 && gkeyIndex < 6)
+        m_gkeyCtrlAltCommands[gkeyIndex] = cmd;
 }
 
 // Double-fork so the grandchild is reparented to init and auto-reaped — the
